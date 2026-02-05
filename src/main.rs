@@ -1,21 +1,25 @@
 mod crypto;
+mod net;
+mod parser;
 
-use tokio::{net::TcpListener, io::AsyncReadExt};
-use crypto::{RSAIO, RSA, AES};
-use rsa::RsaPrivateKey;
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct Vote {
-    serviceName: String,
-    username: String,
-    address: String,
-    timestamp: String,
-}
+use tokio::net::TcpListener;
+use crypto::{RSAIO, RSAKeyGen};
+use net::vote_handler::VoteHandler;
+use std::path::Path;
+use tokio::io::AsyncWriteExt;
 
 #[tokio::main]
 async fn main() {
-    let privkey = RSAIO::load_private("private.key");
+    let privkey = if Path::new("private.key").exists() {
+        RSAIO::load_private("private.key")
+    } else {
+        println!("private.key not found, generating new RSA keypair...");
+        let (privkey, pubkey) = RSAKeyGen::generate(2048);
+        RSAIO::save_private(&privkey, "private.key");
+        RSAIO::save_public(&pubkey, "public.key");
+        println!("Generated private.key and public.key");
+        privkey
+    };
 
     let listener = TcpListener::bind("0.0.0.0:8192")
         .await
@@ -29,62 +33,22 @@ async fn main() {
 
         tokio::spawn(async move {
             println!("CONNECTED {}", addr);
+            let _ = socket.write_all(b"VOTIFIER 1.9\n").await;
 
-            let mut buffer = Vec::new();
-            let mut temp = [0u8; 1024];
-
-            loop {
-                let n = match socket.read(&mut temp).await {
-                    Ok(0) => break,
-                    Ok(n) => n,
-                    Err(_) => break,
-                };
-
-                buffer.extend_from_slice(&temp[..n]);
-
-                match try_parse_packet(&buffer, &key) {
-                    Ok(Some(vote)) => {
-                        println!("NEW VOTE {:?}", vote);
-                        break;
-                    }
-                    Ok(None) => {
-                        // belum cukup data, lanjut baca
-                        continue;
-                    }
-                    Err(e) => {
-                        println!("INVALID PACKET: {}", e);
-                        break;
-                    }
+            // Try with v1 first, then v2 if v1 fails
+            let result = match VoteHandler::handle_v1(&mut socket, &key).await {
+                Ok(vote) => Ok(vote),
+                Err(_) => {
+                    VoteHandler::handle_v2(&mut socket).await
                 }
+            };
+
+            match result {
+                Ok(vote) => println!("NEW VOTE {:?}", vote),
+                Err(e) => println!("VOTIFIER ERROR from {}: {}", addr, e),
             }
+
+            println!("DISCONNECTED {}", addr);
         });
     }
-}
-
-fn try_parse_packet(data: &[u8], key: &RsaPrivateKey) -> Result<Option<Vote>, String> {
-    if data.len() < 2 {
-        return Ok(None);
-    }
-
-    let rsa_len = u16::from_be_bytes([data[0], data[1]]) as usize;
-    let total_min = 2 + rsa_len + 16;
-
-    if data.len() < total_min {
-        return Ok(None); // belum lengkap
-    }
-
-    let rsa_block = &data[2..2 + rsa_len];
-    let iv = &data[2 + rsa_len..2 + rsa_len + 16];
-    let payload = &data[2 + rsa_len + 16..];
-
-    let aes_key = RSA::decrypt(rsa_block, key);
-    let decrypted = AES::decrypt(payload, &aes_key, iv);
-
-    let json = String::from_utf8(decrypted)
-        .map_err(|_| "Invalid UTF8")?;
-
-    let vote: Vote = serde_json::from_str(&json)
-        .map_err(|_| "Invalid JSON")?;
-
-    Ok(Some(vote))
 }

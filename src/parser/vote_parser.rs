@@ -4,6 +4,7 @@ use serde::Deserialize;
 pub struct VoteParser;
 
 impl VoteParser {
+    /// Parse a Votifier v1 by tcp payload (after decryption).
     pub fn parse_v1(plaintext: &str) -> Result<Vote, VoteHandlerError> {
         let mut lines = plaintext.lines();
 

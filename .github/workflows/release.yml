@@ -1,0 +1,102 @@
+name: Manual Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Git tag to create/update (e.g. v1.0.0)"
+        required: true
+        type: string
+      release_name:
+        description: "Release title (optional)"
+        required: false
+        type: string
+      draft:
+        description: "Create as draft"
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark as prerelease"
+        required: false
+        type: booleand
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          if (!(Test-Path "target/release/VoteMe.dll")) {
+            throw "Expected output not found: target/release/VoteMe.dll"
+          }
+          Copy-Item -Force "target/release/VoteMe.dll" "dist/VoteMe.dll"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # cdylib outputs are typically prefixed with 'lib' on Linux
+          if [ -f "target/release/libVoteMe.so" ]; then
+            cp -f "target/release/libVoteMe.so" "dist/VoteMe.so"
+          elif [ -f "target/release/VoteMe.so" ]; then
+            cp -f "target/release/VoteMe.so" "dist/VoteMe.so"
+          else
+            echo "Available .so files:"; ls -la target/release/*.so 2>/dev/null || true
+            echo "Available lib*.so files:"; ls -la target/release/lib*.so 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoteMe-${{ runner.os }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ inputs.release_name || inputs.tag_name }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            artifacts/**/VoteMe.dll
+            artifacts/**/VoteMe.so

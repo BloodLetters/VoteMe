@@ -1,5 +1,5 @@
-use rsa::{RsaPrivateKey, RsaPublicKey};
 use rand::thread_rng;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 
 pub fn generate(bits: usize) -> (RsaPrivateKey, RsaPublicKey) {
     log::warn!("============================");
@@ -7,8 +7,7 @@ pub fn generate(bits: usize) -> (RsaPrivateKey, RsaPublicKey) {
     log::warn!("============================");
 
     let mut rng = thread_rng();
-    let privkey = RsaPrivateKey::new(&mut rng, bits)
-        .expect("Key gen failed");
+    let privkey = RsaPrivateKey::new(&mut rng, bits).expect("Key gen failed");
     let pubkey = RsaPublicKey::from(&privkey);
     (privkey, pubkey)
 }

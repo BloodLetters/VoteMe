@@ -1,0 +1,26 @@
+[package]
+name = "voteme"
+version = "1.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+voteme-api = { path = "../voteme-api" }
+
+pumpkin = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin" }
+pumpkin-util = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin-util" }
+pumpkin-api-macros = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin-api-macros" }
+
+log = "0.4"
+tokio = { version = "1.49", features = ["full"] }
+rsa = "0.9"
+rand = "0.8"
+aes = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+base64 = "0.22"
+cbc = "0.1"
+cipher = "0.4"

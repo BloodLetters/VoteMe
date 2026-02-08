@@ -1,6 +1,16 @@
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
 
-use crate::net::vote_handler::Vote;
+/// Vote event data shared across plugins.
+#[derive(Debug, Clone)]
+pub struct Vote {
+    pub service_name: String,
+    pub username: String,
+    pub address: String,
+    pub timestamp: String,
+}
 
 /// Internal "loaded" flag for the VoteMe plugin.
 static VOTEME_LOADED: AtomicBool = AtomicBool::new(false);
@@ -16,14 +26,14 @@ fn on_vote_received_store() -> &'static Mutex<Option<VoteReceivedCallback>> {
     ON_VOTE_RECEIVED.get_or_init(|| Mutex::new(None))
 }
 
-/// Returns `true` if the plugin has finished its load routine.
+/// Returns `true` if the VoteMe plugin has finished its load routine.
 pub fn voteme_loaded() -> bool {
     VOTEME_LOADED.load(Ordering::Relaxed)
 }
 
 /// Sets the internal loaded state.
 ///
-/// This is intended to be called by the plugin itself.
+/// Intended to be called by VoteMe itself.
 pub fn set_voteme_loaded(loaded: bool) {
     VOTEME_LOADED.store(loaded, Ordering::Relaxed);
 }
@@ -48,7 +58,7 @@ pub fn clear_on_vote_received() {
 
 /// Triggers the vote-received callback (if registered).
 ///
-/// This is intended to be called by VoteMe's networking code when a vote arrives.
+/// Intended to be called by VoteMe's networking code when a vote arrives.
 pub fn on_vote_received(vote: Vote) {
     let callback = {
         let guard = on_vote_received_store()

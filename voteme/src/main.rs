@@ -2,11 +2,11 @@ mod crypto;
 mod net;
 mod parser;
 
-use tokio::net::TcpListener;
 use crypto::{RSAIO, RSAKeyGen};
 use net::vote_handler::VoteHandler;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
@@ -21,9 +21,7 @@ async fn main() {
         privkey
     };
 
-    let listener = TcpListener::bind("0.0.0.0:8192")
-        .await
-        .expect("Bind failed");
+    let listener = TcpListener::bind("0.0.0.0:8192").await.expect("Bind failed");
 
     println!("LISTENING 0.0.0.0:8192");
 
@@ -38,9 +36,7 @@ async fn main() {
             // Try with v1 first, then v2 if v1 fails
             let result = match VoteHandler::handle_v1(&mut socket, &key).await {
                 Ok(vote) => Ok(vote),
-                Err(_) => {
-                    VoteHandler::handle_v2(&mut socket).await
-                }
+                Err(_) => VoteHandler::handle_v2(&mut socket).await,
             };
 
             match result {

@@ -1,5 +1,6 @@
-use crate::net::vote_handler::{Vote, VoteHandlerError};
+use crate::net::vote_handler::VoteHandlerError;
 use serde::Deserialize;
+use voteme_api::Vote;
 
 pub struct VoteParser;
 
@@ -8,9 +9,9 @@ impl VoteParser {
     pub fn parse_v1(plaintext: &str) -> Result<Vote, VoteHandlerError> {
         let mut lines = plaintext.lines();
 
-        let header = lines.next().ok_or_else(|| {
-            VoteHandlerError::InvalidPacket("Empty payload".to_string())
-        })?;
+        let header = lines
+            .next()
+            .ok_or_else(|| VoteHandlerError::InvalidPacket("Empty payload".to_string()))?;
 
         if header != "VOTE" {
             return Err(VoteHandlerError::InvalidPacket(format!(

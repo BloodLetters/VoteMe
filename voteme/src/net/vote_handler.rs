@@ -5,14 +5,7 @@ use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
-#[derive(Debug, Clone)]
-pub struct Vote {
-    pub service_name: String,
-    pub username: String,
-    pub address: String,
-    pub timestamp: String,
-}
+use voteme_api::Vote;
 
 #[derive(Debug)]
 pub enum VoteHandlerError {
@@ -49,10 +42,7 @@ pub struct VoteHandler;
 
 impl VoteHandler {
     /// Votifier v1
-    pub async fn handle_v1(
-        socket: &mut TcpStream,
-        key: &RsaPrivateKey,
-    ) -> Result<Vote, VoteHandlerError> {
+    pub async fn handle_v1(socket: &mut TcpStream, key: &RsaPrivateKey) -> Result<Vote, VoteHandlerError> {
         socket.write_all(b"VOTIFIER 1.9\n").await?;
 
         let rsa_size = key.size();
@@ -69,18 +59,14 @@ impl VoteHandler {
 
         VoteParser::parse_v1(&plaintext)
     }
-	
-    pub async fn handle_v2(
-        socket: &mut TcpStream,
-    ) -> Result<Vote, VoteHandlerError> {
+
+    pub async fn handle_v2(socket: &mut TcpStream) -> Result<Vote, VoteHandlerError> {
         let mut len_buf = [0u8; 4];
         socket.read_exact(&mut len_buf).await?;
         let len = u32::from_be_bytes(len_buf) as usize;
 
         if len > 64 * 1024 {
-            return Err(VoteHandlerError::InvalidPacket(
-                "v2 payload too large".to_string(),
-            ));
+            return Err(VoteHandlerError::InvalidPacket("v2 payload too large".to_string()));
         }
 
         let mut buf = vec![0u8; len];

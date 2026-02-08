@@ -3,26 +3,6 @@
 version = 4
 
 [[package]]
-name = "VoteMe"
-version = "1.0.0"
-dependencies = [
- "aes",
- "base64",
- "cbc",
- "cipher",
- "log",
- "pumpkin",
- "pumpkin-api-macros",
- "pumpkin-util",
- "rand 0.8.5",
- "rsa 0.9.10",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2713,6 +2693,26 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "voteme"
+version = "1.0.0"
+dependencies = [
+ "aes",
+ "base64",
+ "cbc",
+ "cipher",
+ "log",
+ "pumpkin",
+ "pumpkin-api-macros",
+ "pumpkin-util",
+ "rand 0.8.5",
+ "rsa 0.9.10",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.8.23",
+]
 
 [[package]]
 name = "wasi"

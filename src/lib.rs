@@ -10,7 +10,9 @@ mod crypto;
 mod net;
 mod parser;
 mod file;
+mod api;
 
+pub use api::*;
 use crypto::{RSAIO, RSAKeyGen};
 use net::vote_handler::VoteHandler;
 use file::{Config, ConfigManager};
@@ -79,7 +81,10 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
                             };
 
                             match result {
-                                Ok(vote) => log::info!("New vote received: {:?}", vote),
+                                Ok(vote) => {
+                                    log::info!("New vote received: {:?}", vote);
+                                    crate::api::on_vote_received(vote);
+                                }
                                 Err(e) => log::warn!("Vote handler error from {}: {}", addr, e),
                             }
 
@@ -95,6 +100,7 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
     });
 
     log::info!("VoteMe plugin loaded successfully.");
+    crate::api::set_voteme_loaded(true);
     Ok(())
 }
 

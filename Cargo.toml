@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2024"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 pumpkin = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin" }

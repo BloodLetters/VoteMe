@@ -1,0 +1,4 @@
+[build]
+# Prefer dynamic linking so plugin cdylibs (`voteme`, other plugins) will link to
+# `voteme-api` as a shared Rust dylib, allowing shared global state across DLLs.
+rustflags = ["-C", "prefer-dynamic"]

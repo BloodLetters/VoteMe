@@ -5,6 +5,7 @@ use pumpkin::plugin::Context;
 use pumpkin_api_macros::{plugin_impl, plugin_method};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
+use voteme_api::VoteReceivedEvent;
 
 mod crypto;
 mod file;
@@ -13,26 +14,50 @@ mod parser;
 
 use crypto::{RSAIO, RSAKeyGen};
 use file::{Config, ConfigManager};
-use net::vote_handler::VoteHandler;
+use net::{vote_handler::VoteHandler, EventManager};
+
+/// Global event manager instance untuk VoteReceivedEvent
+pub static EVENT_MANAGER: once_cell::sync::Lazy<EventManager> =
+    once_cell::sync::Lazy::new(EventManager::new);
+
+/// Akses global event manager
+pub fn get_event_manager() -> &'static EventManager {
+    &EVENT_MANAGER
+}
+
+/// Register handler untuk menerima VoteReceivedEvent
+/// 
+/// # Example
+/// ```
+/// voteme::on_vote_received(|event| {
+///     println!("Vote received from: {}", event.vote().username());
+/// }).await;
+/// ```
+pub async fn on_vote_received<F>(handler: F)
+where
+    F: Fn(VoteReceivedEvent) + Send + Sync + 'static,
+{
+    get_event_manager().subscribe(handler).await;
+}
+
+
 
 #[plugin_method]
 async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
     server.init_log();
     log::info!("VoteMe plugin loading...");
 
-    // Initialize config
     let mut config = Config::default();
     let mut config_manager = ConfigManager::new_default();
     config_manager.init_config(&mut config).await?;
 
     log::info!(
-        "Config loaded - Host: {}, Port: {}, RSA Bits: {}",
+        "Config loaded - Host: {:?}, Port: {:?}, RSA Bits: {:?}",
         config.host,
         config.port,
         config.rsa_bits
     );
 
-    // Load or generate RSA keypair
     let privkey = if Path::new("plugins/VoteMe/rsa/private.key").exists() {
         log::info!("Loading existing RSA keypair...");
         RSAIO::load_private("private.key")
@@ -50,7 +75,6 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
 
     log::info!("Starting VoteMe server on {}:{}...", config.host, config.port);
 
-    // Spawn the vote server in a new runtime task
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
@@ -70,15 +94,15 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
                 match listener.accept().await {
                     Ok((mut socket, addr)) => {
                         let key = privkey.clone();
+                        let debug = config.debug;
 
                         tokio::spawn(async move {
-                            if config.debug {
+                            if debug {
                                 log::debug!("Accepted vote connection from {}", addr)
                             }
 
                             let _ = socket.write_all(b"VOTIFIER 1.9\n").await;
 
-                            // Try with v1 first, then v2 if v1 fails
                             let result = match VoteHandler::handle_v1(&mut socket, &key).await {
                                 Ok(vote) => Ok(vote),
                                 Err(_) => VoteHandler::handle_v2(&mut socket).await,
@@ -86,15 +110,18 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
 
                             match result {
                                 Ok(vote) => {
-                                    log::info!("New vote received: {:?}", vote);
-                                    voteme_api::on_vote_received(vote);
+                                    log::info!("New vote received from: {}", vote.username);
+                                    
+                                    // Emit VoteReceivedEvent ke semua registered handlers
+                                    let event_manager = get_event_manager();
+                                    event_manager.emit(vote).await;
                                 }
                                 Err(e) => {
                                     log::warn!("Vote handler error from {}: {}", addr, e)
                                 }
                             }
 
-                            if config.debug {
+                            if debug {
                                 log::debug!("Vote connection closed: {}", addr)
                             }
                         });
@@ -108,7 +135,6 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
     });
 
     log::info!("VoteMe plugin loaded successfully.");
-    voteme_api::set_voteme_loaded(true);
     Ok(())
 }
 

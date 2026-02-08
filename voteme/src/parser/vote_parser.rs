@@ -35,10 +35,13 @@ impl VoteParser {
             .ok_or_else(|| VoteHandlerError::InvalidPacket("Missing address".to_string()))?
             .to_string();
 
-        let timestamp = lines
+        let timestamp_str = lines
             .next()
             .ok_or_else(|| VoteHandlerError::InvalidPacket("Missing timestamp".to_string()))?
             .to_string();
+
+        let timestamp = timestamp_str.parse::<u64>()
+            .map_err(|_| VoteHandlerError::InvalidPacket("Invalid timestamp".to_string()))?;
 
         Ok(Vote {
             service_name,
@@ -66,7 +69,7 @@ impl VoteParser {
             service_name: payload.serviceName,
             username: payload.username,
             address: payload.address,
-            timestamp: payload.timestamp.to_string(),
+            timestamp: payload.timestamp as u64,
         })
     }
 }

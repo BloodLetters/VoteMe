@@ -1,73 +1,65 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex, OnceLock,
-};
+// voteme-api/src/lib.rs
+use std::os::raw::c_char;
+use std::sync::Arc;
 
-/// Vote event data shared across plugins.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Vote {
     pub service_name: String,
     pub username: String,
     pub address: String,
-    pub timestamp: String,
+    pub timestamp: u64,
 }
 
-/// Internal "loaded" flag for the VoteMe plugin.
-static VOTEME_LOADED: AtomicBool = AtomicBool::new(false);
-
-/// Callback signature for vote events.
-///
-/// Note: kept as an `Arc<dyn Fn(Vote)>` so it can be safely shared across threads.
-pub type VoteReceivedCallback = Arc<dyn Fn(Vote) + Send + Sync + 'static>;
-
-static ON_VOTE_RECEIVED: OnceLock<Mutex<Option<VoteReceivedCallback>>> = OnceLock::new();
-
-fn on_vote_received_store() -> &'static Mutex<Option<VoteReceivedCallback>> {
-    ON_VOTE_RECEIVED.get_or_init(|| Mutex::new(None))
+/// Event yang dikirim ketika vote diterima
+#[derive(Clone, Debug)]
+pub struct VoteReceivedEvent {
+    pub vote: Vote,
+    pub received_at: std::time::SystemTime,
 }
 
-/// Returns `true` if the VoteMe plugin has finished its load routine.
-pub fn voteme_loaded() -> bool {
-    VOTEME_LOADED.load(Ordering::Relaxed)
-}
+// Function pointer types (ABI contract)
+pub type GetVotesFn = unsafe extern "C" fn(len: *mut usize) -> *const Vote;
+pub type FreeVotesFn = unsafe extern "C" fn(ptr: *const Vote, len: usize);
+pub type FreeStringFn = unsafe extern "C" fn(ptr: *mut c_char);
 
-/// Sets the internal loaded state.
-///
-/// Intended to be called by VoteMe itself.
-pub fn set_voteme_loaded(loaded: bool) {
-    VOTEME_LOADED.store(loaded, Ordering::Relaxed);
-}
+// Event handler type
+pub type VoteEventHandler = Arc<dyn Fn(VoteReceivedEvent) + Send + Sync>;
 
-/// Registers a callback that will be invoked whenever a new vote is received.
-///
-/// Only a single callback is stored; registering again replaces the previous one.
-pub fn set_on_vote_received(callback: VoteReceivedCallback) {
-    let mut guard = on_vote_received_store()
-        .lock()
-        .expect("on_vote_received mutex poisoned");
-    *guard = Some(callback);
-}
+/// Helper untuk mendapatkan informasi vote
+impl Vote {
+    pub fn new(service_name: String, username: String, address: String, timestamp: u64) -> Self {
+        Vote {
+            service_name,
+            username,
+            address,
+            timestamp,
+        }
+    }
 
-/// Clears the current vote callback (if any).
-pub fn clear_on_vote_received() {
-    let mut guard = on_vote_received_store()
-        .lock()
-        .expect("on_vote_received mutex poisoned");
-    *guard = None;
-}
+    pub fn service_name(&self) -> &str {
+        &self.service_name
+    }
 
-/// Triggers the vote-received callback (if registered).
-///
-/// Intended to be called by VoteMe's networking code when a vote arrives.
-pub fn on_vote_received(vote: Vote) {
-    let callback = {
-        let guard = on_vote_received_store()
-            .lock()
-            .expect("on_vote_received mutex poisoned");
-        guard.clone()
-    };
+    pub fn username(&self) -> &str {
+        &self.username
+    }
 
-    if let Some(cb) = callback {
-        cb(vote);
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
     }
 }
+
+impl VoteReceivedEvent {
+    pub fn vote(&self) -> &Vote {
+        &self.vote
+    }
+
+    pub fn received_at(&self) -> std::time::SystemTime {
+        self.received_at
+    }
+}
+

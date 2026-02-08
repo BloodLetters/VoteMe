@@ -6,4 +6,7 @@ members = [
 resolver = "2"
 
 [profile.release]
-lto = true
+# NOTE: We disable LTO because this workspace uses `-C prefer-dynamic` (see
+# `.cargo/config.toml`) to allow sharing `voteme-api` as a dynamic library
+# across multiple plugin DLLs. `prefer-dynamic` is not compatible with LTO.
+lto = false

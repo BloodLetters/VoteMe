@@ -2703,6 +2703,7 @@ dependencies = [
  "cbc",
  "cipher",
  "log",
+ "once_cell",
  "pumpkin",
  "pumpkin-api-macros",
  "pumpkin-util",

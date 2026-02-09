@@ -1,6 +1,7 @@
-use crate::net::vote_handler::{Vote, VoteHandlerError};
+use crate::net::vote_handler::{VoteHandlerError};
 use serde::Deserialize;
 
+use crate::vote::Vote;
 pub struct VoteParser;
 
 impl VoteParser {

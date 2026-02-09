@@ -5,14 +5,7 @@ use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
-#[derive(Debug, Clone)]
-pub struct Vote {
-    pub service_name: String,
-    pub username: String,
-    pub address: String,
-    pub timestamp: String,
-}
+use crate::vote::Vote;
 
 #[derive(Debug)]
 pub enum VoteHandlerError {

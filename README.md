@@ -1,7 +1,5 @@
 > [!IMPORTANT]
 > VoteMe is currently under development.
->
-> Bug and some issue maybe occured
 
 <div align="center">
 <h2>VoteMe</h2>

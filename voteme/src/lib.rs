@@ -1,6 +1,6 @@
 use std::{path::Path, sync::{Arc, Mutex}};
 
-use pumpkin::plugin::{Context, Payload};
+use pumpkin::plugin::{Context};
 use pumpkin_api_macros::{plugin_impl, plugin_method};
 use tokio::{io::AsyncWriteExt, net::TcpListener};
 
@@ -107,8 +107,6 @@ async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
 
     Ok(())
 }
-
-
 
 #[plugin_impl]
 pub struct VoteMe;

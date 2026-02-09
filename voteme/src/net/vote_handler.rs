@@ -5,7 +5,7 @@ use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use crate::vote::Vote;
+use voteme_api::Vote;
 
 #[derive(Debug)]
 pub enum VoteHandlerError {

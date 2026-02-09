@@ -1,8 +1,6 @@
 use crate::net::vote_handler::{VoteHandlerError};
 use serde::Deserialize;
 use voteme_api::Vote;
-
-use crate::vote::Vote;
 pub struct VoteParser;
 
 impl VoteParser {
@@ -48,7 +46,7 @@ impl VoteParser {
             service_name,
             username,
             address,
-            timestamp,
+            timestamp: timestamp.to_string(),
         })
     }
 
@@ -70,7 +68,7 @@ impl VoteParser {
             service_name: payload.serviceName,
             username: payload.username,
             address: payload.address,
-            timestamp: payload.timestamp as u64,
+            timestamp: payload.timestamp.to_string(),
         })
     }
 }

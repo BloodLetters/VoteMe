@@ -12,14 +12,14 @@ on:
         required: false
         type: string
       draft:
-        description: "Create as draft"
+        description: "Mark as draft"
         required: false
         type: boolean
         default: false
       prerelease:
         description: "Mark as prerelease"
         required: false
-        type: booleand
+        type: boolean
         default: false
 
 permissions:
@@ -50,10 +50,31 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          if (!(Test-Path "target/release/VoteMe.dll")) {
-            throw "Expected output not found: target/release/VoteMe.dll"
+
+          $voteme = @(
+            "target/release/voteme.dll",
+            "target/release/VoteMe.dll"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $voteme) {
+            Write-Host "Available DLLs in target/release:"
+            Get-ChildItem -Path "target/release" -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+            throw "Expected output not found for voteme (.dll)."
           }
-          Copy-Item -Force "target/release/VoteMe.dll" "dist/VoteMe.dll"
+          Copy-Item -Force $voteme "dist/voteme.dll"
+
+          $votemeReward = @(
+            "target/release/voteme_reward.dll",
+            "target/release/voteme-reward.dll",
+            "target/release/VoteMeReward.dll"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $votemeReward) {
+            Write-Host "Available DLLs in target/release:"
+            Get-ChildItem -Path "target/release" -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+            throw "Expected output not found for voteme_reward (.dll)."
+          }
+          Copy-Item -Force $votemeReward "dist/voteme_reward.dll"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -61,16 +82,29 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+
           # cdylib outputs are typically prefixed with 'lib' on Linux
-          if [ -f "target/release/libVoteMe.so" ]; then
-            cp -f "target/release/libVoteMe.so" "dist/VoteMe.so"
-          elif [ -f "target/release/VoteMe.so" ]; then
-            cp -f "target/release/VoteMe.so" "dist/VoteMe.so"
-          else
+          voteme_src=""
+          for f in target/release/libvoteme.so target/release/voteme.so target/release/libVoteMe.so target/release/VoteMe.so; do
+            if [ -f "$f" ]; then voteme_src="$f"; break; fi
+          done
+          if [ -z "$voteme_src" ]; then
             echo "Available .so files:"; ls -la target/release/*.so 2>/dev/null || true
             echo "Available lib*.so files:"; ls -la target/release/lib*.so 2>/dev/null || true
             exit 1
           fi
+          cp -f "$voteme_src" "dist/voteme.so"
+
+          voteme_reward_src=""
+          for f in target/release/libvoteme_reward.so target/release/voteme_reward.so target/release/libvoteme-reward.so target/release/voteme-reward.so; do
+            if [ -f "$f" ]; then voteme_reward_src="$f"; break; fi
+          done
+          if [ -z "$voteme_reward_src" ]; then
+            echo "Available .so files:"; ls -la target/release/*.so 2>/dev/null || true
+            echo "Available lib*.so files:"; ls -la target/release/lib*.so 2>/dev/null || true
+            exit 1
+          fi
+          cp -f "$voteme_reward_src" "dist/voteme_reward.so"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -98,5 +132,7 @@ jobs:
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
           files: |
-            artifacts/**/VoteMe.dll
-            artifacts/**/VoteMe.so
+            artifacts/**/voteme.dll
+            artifacts/**/voteme.so
+            artifacts/**/voteme_reward.dll
+            artifacts/**/voteme_reward.so

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
 use std::io::{Read, Write};
+use std::path::Path;
 
 pub const DEFAULT_CONFIG_PATH: &str = "plugins/VoteMe/Config.toml";
 
@@ -9,10 +9,10 @@ pub const DEFAULT_CONFIG_PATH: &str = "plugins/VoteMe/Config.toml";
 pub struct Config {
     #[serde(default = "default_host")]
     pub host: String,
-    
+
     #[serde(default = "default_port")]
     pub port: u16,
-    
+
     #[serde(default = "default_rsa_bits")]
     pub rsa_bits: u32,
 
@@ -91,7 +91,7 @@ impl ConfigManager {
 
     pub async fn save_config(&self, config: &Config) -> Result<(), String> {
         let config_path = Path::new(&self.config_file);
-        
+
         // Create parent directories if they don't exist
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -99,8 +99,7 @@ impl ConfigManager {
 
         let mut file = std::fs::File::create(&self.config_file).map_err(|e| e.to_string())?;
         let config_str = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
-        file.write_all(config_str.as_bytes())
-            .map_err(|e| e.to_string())?;
+        file.write_all(config_str.as_bytes()).map_err(|e| e.to_string())?;
         Ok(())
     }
 }

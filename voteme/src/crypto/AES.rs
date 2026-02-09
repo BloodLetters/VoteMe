@@ -2,7 +2,7 @@ use aes::Aes128;
 use cbc::{Decryptor, Encryptor};
 use cipher::{
     block_padding::Pkcs7,
-    BlockDecryptMut, BlockEncryptMut, KeyIvInit
+    BlockDecryptMut, BlockEncryptMut, KeyIvInit,
 };
 
 pub fn decrypt(data: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {

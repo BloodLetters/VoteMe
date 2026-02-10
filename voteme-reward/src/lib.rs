@@ -1,13 +1,21 @@
 use std::{sync::Arc, time::Duration};
 
-use pumpkin::plugin::Context;
+use pumpkin::plugin::{Context, PluginManager};
 use pumpkin_api_macros::{plugin_impl, plugin_method};
 use voteme_api::VoteService;
+
+mod storage;
+use storage::database::Database;
 
 #[plugin_method]
 fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
     server.init_log();
     log::info!("VoteReward plugin loading...");
+
+    // PluginManager::wait_for_plugin(&server.plugin_manager, "voteme");
+
+    let db = Arc::new(Database::open("plugins/voteme-reward/voteme.sqlite")?);
+    log::info!("VoteReward sqlite ready: {:?}", db.path());
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -20,8 +28,14 @@ fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
             if let Some(service) = server.get_service::<VoteService>("voteme_service").await {
                 log::info!("✅ VoteService found! Registering reward listener.");
 
-                service.on_vote(|vote| {
+                let db = Arc::clone(&db);
+
+                service.on_vote(move |vote| {
                     log::info!("Rewarding player: {}", vote.username);
+
+                    if let Err(e) = db.insert_vote(&vote) {
+                        log::error!("Failed to persist vote to sqlite: {e}");
+                    }
                 });
 
                 log::info!("VoteReward listener registered.");

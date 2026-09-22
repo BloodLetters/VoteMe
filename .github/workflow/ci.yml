@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy:
+    name: Cargo Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Cargo Check
+        run: cargo check --target wasm32-wasip2 --verbose
+
+      - name: Run Cargo Clippy
+        run: cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
+
+  alpha:
+    name: Alpha Release
+    runs-on: ubuntu-latest
+    needs: clippy
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Release
+        run: cargo build --target wasm32-wasip2 --release
+
+      - name: Update Alpha Git Tag
+        run: |
+          git tag -f alpha
+          git push -f origin alpha
+
+      - name: Publish Alpha Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: alpha
+          name: "VoteMe Alpha Build"
+          body: |
+            Automated alpha build for **VoteMe**.
+            - **Commit**: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            - **Branch**: `${{ github.ref_name }}`
+            - **Build Date**: ${{ github.event.head_commit.timestamp }}
+          prerelease: true
+          files: |
+            target/wasm32-wasip2/release/voteme.wasm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

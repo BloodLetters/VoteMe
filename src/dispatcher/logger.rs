@@ -19,10 +19,10 @@ impl LogSuppressionManager {
         let now = Instant::now();
         let mut keys = self.logged_keys.write().unwrap();
 
-        if let Some(last_logged) = keys.get(warning_key) {
-            if now.duration_since(*last_logged) < self.suppression_window {
-                return false;
-            }
+        if let Some(last_logged) = keys.get(warning_key)
+            && now.duration_since(*last_logged) < self.suppression_window
+        {
+            return false;
         }
 
         keys.insert(warning_key.to_string(), now);

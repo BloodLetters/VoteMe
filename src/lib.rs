@@ -19,7 +19,7 @@ use crate::config::load_or_create_config;
 use crate::crypto::RsaKeyManager;
 use crate::dispatcher::VoteDispatcher;
 use crate::model::VoteStatistics;
-use crate::network::{VoteReceiver, VoteThrottleService};
+use crate::network::{ConnectionContext, VoteReceiver, VoteThrottleService};
 
 pub struct VoteMe {
     receiver: Mutex<Option<VoteReceiver>>,
@@ -91,14 +91,16 @@ impl Plugin for VoteMe {
             }
         });
 
+        let connection_context = Arc::new(ConnectionContext {
+            key_manager,
+            tokens: tokens_map,
+            throttle_service,
+            stats: Arc::clone(&self.stats),
+            disable_v1: config.disable_v1,
+        });
+
         receiver
-            .start(
-                Arc::clone(&key_manager),
-                tokens_map,
-                Arc::clone(&throttle_service),
-                config.disable_v1,
-                vote_callback,
-            )
+            .start(&context, connection_context, vote_callback)
             .map_err(|e| format!("Failed to start Votifier listener: {e}"))?;
 
         context.register_permission(&Permission {

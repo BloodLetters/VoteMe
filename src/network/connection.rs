@@ -7,6 +7,7 @@ use std::time::Duration;
 use crate::crypto::challenge::generate_secure_challenge;
 use crate::crypto::rsa::{RsaKeyManager, V1_BLOCK_BYTES};
 use crate::error::{VotifierError, VotifierResult};
+use crate::model::stats::VoteStatistics;
 use crate::model::Vote;
 use crate::network::throttle::VoteThrottleService;
 use crate::protocol::detector::detect_protocol_version;
@@ -22,6 +23,7 @@ pub struct ConnectionContext {
     pub key_manager: Arc<RsaKeyManager>,
     pub tokens: Arc<HashMap<String, String>>,
     pub throttle_service: Arc<VoteThrottleService>,
+    pub stats: Arc<VoteStatistics>,
     pub disable_v1: bool,
 }
 
@@ -29,8 +31,8 @@ pub fn handle_client_connection(
     stream: TcpStream,
     context: &ConnectionContext,
 ) -> VotifierResult<Vote> {
-    stream.set_read_timeout(Some(DEFAULT_SOCKET_TIMEOUT))?;
-    stream.set_write_timeout(Some(DEFAULT_SOCKET_TIMEOUT))?;
+    let _ = stream.set_read_timeout(Some(DEFAULT_SOCKET_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(DEFAULT_SOCKET_TIMEOUT));
 
     let peer_addr = stream.peer_addr().map_err(VotifierError::NetworkIo)?;
     let mut client_ip = peer_addr.ip().to_string();
@@ -42,8 +44,14 @@ pub fn handle_client_connection(
         });
     }
 
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut writer = stream.try_clone()?;
+    let mut reader = BufReader::new(&stream);
+    let mut writer = &stream;
+
+    let challenge = generate_secure_challenge();
+
+    let greeting = format!("VOTIFIER 2 {challenge}\r\n");
+    writer.write_all(greeting.as_bytes())?;
+    writer.flush()?;
 
     let proxy_result = process_proxy_headers(&mut reader, &mut writer)?;
     if let Some(real_ip) = proxy_result.real_client_ip {
@@ -55,12 +63,6 @@ pub fn handle_client_connection(
             });
         }
     }
-
-    let challenge = generate_secure_challenge();
-
-    let greeting = format!("VOTIFIER 2 {challenge}\r\n");
-    writer.write_all(greeting.as_bytes())?;
-    writer.flush()?;
 
     let vote = match read_and_parse_packet(&mut reader, context, &challenge, &client_ip) {
         Ok(v) => {
@@ -103,7 +105,7 @@ fn read_and_parse_packet<R: Read>(
             reader.read_exact(&mut block[2..])?;
 
             let request = parse_v1_packet(&block, &context.key_manager)?;
-            Ok(request.into_vote(source_ip))
+            Ok(request.into_vote(source_ip, false))
         }
         VoteProtocolVersion::V2 => {
             let mut payload_bytes = Vec::new();
@@ -132,16 +134,16 @@ fn read_and_parse_packet<R: Read>(
                         break;
                     }
                     payload_bytes.extend_from_slice(&chunk[..count]);
-                    if chunk[..count].contains(&b'}') {
-                        if serde_json::from_slice::<serde_json::Value>(&payload_bytes).is_ok() {
-                            break;
-                        }
+                    if chunk[..count].contains(&b'}')
+                        && serde_json::from_slice::<serde_json::Value>(&payload_bytes).is_ok()
+                    {
+                        break;
                     }
                 }
             }
 
             let request = parse_v2_packet(&payload_bytes, &context.tokens, expected_challenge)?;
-            Ok(request.into_vote(source_ip))
+            Ok(request.into_vote(source_ip, true))
         }
     }
 }

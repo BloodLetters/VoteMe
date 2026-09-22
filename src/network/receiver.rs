@@ -1,23 +1,42 @@
-use std::collections::HashMap;
 use std::net::TcpListener;
+use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
-use crate::crypto::rsa::RsaKeyManager;
+use libc::{fcntl, poll, pollfd, F_GETFL, F_SETFL, O_NONBLOCK, POLLIN};
+use pumpkin_plugin_api::scheduler::{cancel_task, SchedulerExt};
+use pumpkin_plugin_api::Context;
+
 use crate::error::{VotifierError, VotifierResult};
 use crate::model::Vote;
 use crate::network::connection::{handle_client_connection, ConnectionContext};
-use crate::network::throttle::VoteThrottleService;
 
 pub type VoteCallback = Arc<dyn Fn(Vote) + Send + Sync + 'static>;
+
+fn configure_socket_nonblocking(listener: &TcpListener) {
+    let fd = listener.as_raw_fd();
+    let flags = unsafe { fcntl(fd, F_GETFL, 0) };
+    if flags >= 0 {
+        let _ = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
+    }
+}
+
+fn has_pending_connection(listener: &TcpListener) -> bool {
+    let fd = listener.as_raw_fd();
+    let mut pfd = pollfd {
+        fd,
+        events: POLLIN,
+        revents: 0,
+    };
+    let ret = unsafe { poll(&mut pfd, 1, 0) };
+    ret > 0 && (pfd.revents & POLLIN) != 0
+}
 
 pub struct VoteReceiver {
     host: String,
     port: u16,
     running: Arc<AtomicBool>,
-    thread_handle: Option<JoinHandle<()>>,
+    task_id: Option<u32>,
 }
 
 impl VoteReceiver {
@@ -26,16 +45,14 @@ impl VoteReceiver {
             host: host.into(),
             port,
             running: Arc::new(AtomicBool::new(false)),
-            thread_handle: None,
+            task_id: None,
         }
     }
 
     pub fn start(
         &mut self,
-        key_manager: Arc<RsaKeyManager>,
-        tokens: Arc<HashMap<String, String>>,
-        throttle_service: Arc<VoteThrottleService>,
-        disable_v1: bool,
+        context: &Context,
+        connection_context: Arc<ConnectionContext>,
         on_vote: VoteCallback,
     ) -> VotifierResult<()> {
         let bind_addr = format!("{}:{}", self.host, self.port);
@@ -46,60 +63,44 @@ impl VoteReceiver {
             ))
         })?;
 
-        listener.set_nonblocking(true)?;
+        configure_socket_nonblocking(&listener);
 
         let is_running = Arc::clone(&self.running);
         is_running.store(true, Ordering::SeqCst);
 
-        let context = Arc::new(ConnectionContext {
-            key_manager,
-            tokens,
-            throttle_service,
-            disable_v1,
-        });
+        let running_check = Arc::clone(&self.running);
+        let task_id = context.schedule_repeating_task(1, 1, move |_server| {
+            if !running_check.load(Ordering::SeqCst) {
+                return;
+            }
 
-        let handle = thread::Builder::new()
-            .name("votifier-io-listener".to_string())
-            .spawn(move || {
-                while is_running.load(Ordering::SeqCst) {
-                    match listener.accept() {
-                        Ok((stream, _)) => {
-                            let worker_context = Arc::clone(&context);
-                            let worker_callback = Arc::clone(&on_vote);
+            while has_pending_connection(&listener) {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        let worker_context = Arc::clone(&connection_context);
+                        let worker_callback = Arc::clone(&on_vote);
 
-                            thread::Builder::new()
-                                .name("votifier-worker".to_string())
-                                .spawn(move || {
-                                    match handle_client_connection(stream, &worker_context) {
-                                        Ok(vote) => {
-                                            worker_callback(vote);
-                                        }
-                                        Err(err) => {
-                                            let _ = err;
-                                        }
-                                    }
-                                })
-                                .ok();
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            thread::sleep(Duration::from_millis(50));
-                        }
-                        Err(_) => {
-                            thread::sleep(Duration::from_millis(50));
+                        worker_context.stats.record_incoming_connection();
+                        match handle_client_connection(stream, &worker_context) {
+                            Ok(vote) => worker_callback(vote),
+                            Err(_) => {
+                                worker_context.stats.record_failed_vote();
+                            }
                         }
                     }
+                    Err(_) => break,
                 }
-            })
-            .map_err(VotifierError::NetworkIo)?;
+            }
+        });
 
-        self.thread_handle = Some(handle);
+        self.task_id = Some(task_id);
         Ok(())
     }
 
     pub fn shutdown(&mut self) {
         self.running.store(false, Ordering::SeqCst);
-        if let Some(handle) = self.thread_handle.take() {
-            let _ = handle.join();
+        if let Some(task_id) = self.task_id.take() {
+            cancel_task(task_id);
         }
     }
 

@@ -68,18 +68,18 @@ impl VoteThrottleService {
         let states = self.client_states.read().unwrap();
 
         if let Some(state) = states.get(client_ip) {
-            if let Some(banned_until) = state.banned_until {
-                if now < banned_until {
-                    let remaining = banned_until.duration_since(now).as_secs();
-                    return Err(remaining.max(1));
-                }
+            if let Some(banned_until) = state.banned_until
+                && now < banned_until
+            {
+                let remaining = banned_until.duration_since(now).as_secs();
+                return Err(remaining.max(1));
             }
 
-            if let Some(throttled_until) = state.throttled_until {
-                if now < throttled_until {
-                    let remaining = throttled_until.duration_since(now).as_secs();
-                    return Err(remaining.max(1));
-                }
+            if let Some(throttled_until) = state.throttled_until
+                && now < throttled_until
+            {
+                let remaining = throttled_until.duration_since(now).as_secs();
+                return Err(remaining.max(1));
             }
         }
 
@@ -128,8 +128,8 @@ impl VoteThrottleService {
         let mut states = self.client_states.write().unwrap();
 
         states.retain(|_, state| {
-            let is_banned = state.banned_until.map_or(false, |until| now < until);
-            let is_throttled = state.throttled_until.map_or(false, |until| now < until);
+            let is_banned = state.banned_until.is_some_and(|until| now < until);
+            let is_throttled = state.throttled_until.is_some_and(|until| now < until);
             let is_recent = now.duration_since(state.last_failure_time) <= self.options.failure_reset_window;
 
             is_banned || is_throttled || is_recent

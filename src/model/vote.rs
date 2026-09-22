@@ -9,6 +9,8 @@ pub struct Vote {
     pub address: String,
     pub timestamp: String,
     pub source_address: String,
+    #[serde(default)]
+    pub is_v2: bool,
 }
 
 impl Vote {
@@ -18,6 +20,24 @@ impl Vote {
         address: impl Into<String>,
         timestamp: impl Into<String>,
         source_address: impl Into<String>,
+    ) -> Self {
+        Self::with_version(
+            service_name,
+            username,
+            address,
+            timestamp,
+            source_address,
+            true,
+        )
+    }
+
+    pub fn with_version(
+        service_name: impl Into<String>,
+        username: impl Into<String>,
+        address: impl Into<String>,
+        timestamp: impl Into<String>,
+        source_address: impl Into<String>,
+        is_v2: bool,
     ) -> Self {
         let raw_username = username.into();
         let sanitized_username = if raw_username.len() > MAX_MINECRAFT_USERNAME_LENGTH {
@@ -32,6 +52,7 @@ impl Vote {
             address: address.into(),
             timestamp: timestamp.into(),
             source_address: source_address.into(),
+            is_v2,
         }
     }
 
@@ -49,13 +70,14 @@ pub struct VoteRequest {
 }
 
 impl VoteRequest {
-    pub fn into_vote(self, source_address: impl Into<String>) -> Vote {
-        Vote::new(
+    pub fn into_vote(self, source_address: impl Into<String>, is_v2: bool) -> Vote {
+        Vote::with_version(
             self.service_name,
             self.username,
             self.address,
             self.timestamp,
             source_address,
+            is_v2,
         )
     }
 }

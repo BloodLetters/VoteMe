@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-pumpkin-plugin-api = "0.1.0-dev"
+pumpkin-plugin-api = { git = "https://github.com/Pumpkin-MC/Pumpkin", tag = "0.2.0+26.3-26.51" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rsa = { version = "0.9", features = ["sha2"] }
@@ -19,6 +19,7 @@ subtle = "2.6"
 base64 = "0.22"
 rand = "0.8"
 thiserror = "2.0"
+libc = "0.2"
 
 [profile.release] 
 lto = true

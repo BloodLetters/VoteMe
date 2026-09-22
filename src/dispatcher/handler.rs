@@ -34,7 +34,7 @@ impl VoteDispatcher {
             };
         }
 
-        self.stats.record_successful_vote(true);
+        self.stats.record_successful_vote(vote.is_v2);
 
         let broadcast_text = self
             .config

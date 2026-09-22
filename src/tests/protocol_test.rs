@@ -82,3 +82,28 @@ fn test_proxy_v1_header_processing() {
 
     assert_eq!(result.real_client_ip, Some("203.0.113.195".to_string()));
 }
+
+#[test]
+fn test_v2_array_wrapped_and_numeric_timestamp() {
+    use base64::Engine;
+
+    let mut tokens = HashMap::new();
+    tokens.insert("default".to_string(), "SecretToken".to_string());
+
+    let challenge = "TestChallenge";
+    let inner_json = format!(
+        "{{\"serviceName\":\"PlanetMinecraft\",\"username\":\"pmc-tester\",\"address\":null,\"timestamp\":1727000000,\"challenge\":\"{challenge}\"}}"
+    );
+    let sig_bytes = crate::crypto::hmac::compute_hmac_sha256(inner_json.as_bytes(), b"SecretToken")
+        .expect("Failed HMAC");
+    let sig_b64 = base64::prelude::BASE64_STANDARD.encode(sig_bytes);
+
+    let array_json = format!("[{{\"payload\":{inner_json:?},\"signature\":\"{sig_b64}\"}}]");
+
+    let request = protocol::parse_v2_packet(array_json.as_bytes(), &tokens, challenge)
+        .expect("Failed to parse array-wrapped V2 packet");
+
+    assert_eq!(request.service_name, "PlanetMinecraft");
+    assert_eq!(request.username, "pmc-tester");
+    assert_eq!(request.timestamp, "1727000000");
+}

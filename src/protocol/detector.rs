@@ -10,7 +10,7 @@ pub fn detect_protocol_version(header: &[u8]) -> VotifierResult<VoteProtocolVers
         ));
     }
 
-    if header[0] == b'{' {
+    if header[0] == b'{' || header[0] == b'[' {
         return Ok(VoteProtocolVersion::V2);
     }
 

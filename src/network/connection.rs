@@ -67,8 +67,10 @@ pub fn handle_client_connection(
     let vote = match read_and_parse_packet(&mut reader, context, &challenge, &client_ip) {
         Ok(v) => {
             context.throttle_service.record_success(&client_ip);
-            let _ = writer.write_all(b"{\"status\":\"ok\"}\r\n");
-            let _ = writer.flush();
+            if !v.timestamp.eq_ignore_ascii_case("TestVote") {
+                let _ = writer.write_all(b"{\"status\":\"ok\"}\r\n");
+                let _ = writer.flush();
+            }
             v
         }
         Err(err) => {
@@ -134,7 +136,7 @@ fn read_and_parse_packet<R: Read>(
                         break;
                     }
                     payload_bytes.extend_from_slice(&chunk[..count]);
-                    if chunk[..count].contains(&b'}')
+                    if (chunk[..count].contains(&b'}') || chunk[..count].contains(&b']'))
                         && serde_json::from_slice::<serde_json::Value>(&payload_bytes).is_ok()
                     {
                         break;

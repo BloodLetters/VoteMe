@@ -1,15 +1,15 @@
+use libc::{F_GETFL, F_SETFL, O_NONBLOCK, POLLIN, fcntl, poll, pollfd};
 use std::net::TcpListener;
 use std::os::fd::AsRawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use libc::{fcntl, poll, pollfd, F_GETFL, F_SETFL, O_NONBLOCK, POLLIN};
-use pumpkin_plugin_api::scheduler::{cancel_task, SchedulerExt};
 use pumpkin_plugin_api::Context;
+use pumpkin_plugin_api::scheduler::{SchedulerExt, cancel_task};
 
 use crate::error::{VotifierError, VotifierResult};
 use crate::model::Vote;
-use crate::network::connection::{handle_client_connection, ConnectionContext};
+use crate::network::connection::{ConnectionContext, handle_client_connection};
 
 pub type VoteCallback = Arc<dyn Fn(Vote) + Send + Sync + 'static>;
 
@@ -18,6 +18,14 @@ fn configure_socket_nonblocking(listener: &TcpListener) {
     let flags = unsafe { fcntl(fd, F_GETFL, 0) };
     if flags >= 0 {
         let _ = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
+    }
+}
+
+fn configure_stream_blocking(stream: &std::net::TcpStream) {
+    let fd = stream.as_raw_fd();
+    let flags = unsafe { fcntl(fd, F_GETFL, 0) };
+    if flags >= 0 {
+        let _ = unsafe { fcntl(fd, F_SETFL, flags & !O_NONBLOCK) };
     }
 }
 
@@ -76,14 +84,23 @@ impl VoteReceiver {
 
             while has_pending_connection(&listener) {
                 match listener.accept() {
-                    Ok((stream, _)) => {
+                    Ok((stream, peer)) => {
+                        println!("[VoteMe] Accepted connection from {peer}");
+                        configure_stream_blocking(&stream);
                         let worker_context = Arc::clone(&connection_context);
                         let worker_callback = Arc::clone(&on_vote);
 
                         worker_context.stats.record_incoming_connection();
                         match handle_client_connection(stream, &worker_context) {
-                            Ok(vote) => worker_callback(vote),
-                            Err(_) => {
+                            Ok(vote) => {
+                                println!(
+                                    "[VoteMe] Received vote record: player='{}', service='{}', address='{}', timestamp='{}'",
+                                    vote.username, vote.service_name, vote.address, vote.timestamp
+                                );
+                                worker_callback(vote);
+                            }
+                            Err(err) => {
+                                eprintln!("[VoteMe] Failed to process vote from {peer}: {err}");
                                 worker_context.stats.record_failed_vote();
                             }
                         }
@@ -102,18 +119,6 @@ impl VoteReceiver {
         if let Some(task_id) = self.task_id.take() {
             cancel_task(task_id);
         }
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
-
-    pub fn port(&self) -> u16 {
-        self.port
-    }
-
-    pub fn host(&self) -> &str {
-        &self.host
     }
 }
 

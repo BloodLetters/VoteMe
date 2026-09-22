@@ -13,13 +13,31 @@ pub struct V2OuterMessage {
     pub signature: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+fn deserialize_flexible_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        serde_json::Value::Null => Ok(String::new()),
+        other => Ok(other.to_string()),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct V2InnerPayload {
+    #[serde(deserialize_with = "deserialize_flexible_string")]
     pub service_name: String,
+    #[serde(deserialize_with = "deserialize_flexible_string")]
     pub username: String,
+    #[serde(default, deserialize_with = "deserialize_flexible_string")]
     pub address: String,
+    #[serde(deserialize_with = "deserialize_flexible_string")]
     pub timestamp: String,
+    #[serde(deserialize_with = "deserialize_flexible_string")]
     pub challenge: String,
 }
 
@@ -32,12 +50,34 @@ pub fn parse_v2_packet(
         .map_err(|e| VotifierError::InvalidPayload(format!("Invalid UTF-8 in V2 payload: {e}")))?
         .trim();
 
-    let json_start = raw_text
-        .find('{')
-        .ok_or_else(|| VotifierError::InvalidPayload("Missing opening brace in V2 JSON".to_string()))?;
-    let json_end = raw_text
-        .rfind('}')
-        .ok_or_else(|| VotifierError::InvalidPayload("Missing closing brace in V2 JSON".to_string()))?;
+    let start_brace = raw_text.find('{');
+    let start_bracket = raw_text.find('[');
+
+    let (json_start, json_end) = match (start_brace, start_bracket) {
+        (Some(b), Some(k)) if k < b => {
+            let end_k = raw_text.rfind(']').ok_or_else(|| {
+                VotifierError::InvalidPayload("Missing closing bracket in V2 JSON array".to_string())
+            })?;
+            (k, end_k)
+        }
+        (Some(b), _) => {
+            let end_b = raw_text.rfind('}').ok_or_else(|| {
+                VotifierError::InvalidPayload("Missing closing brace in V2 JSON".to_string())
+            })?;
+            (b, end_b)
+        }
+        (None, Some(k)) => {
+            let end_k = raw_text.rfind(']').ok_or_else(|| {
+                VotifierError::InvalidPayload("Missing closing bracket in V2 JSON array".to_string())
+            })?;
+            (k, end_k)
+        }
+        (None, None) => {
+            return Err(VotifierError::InvalidPayload(
+                "Missing JSON boundary in V2 payload".to_string(),
+            ));
+        }
+    };
 
     if json_start > json_end {
         return Err(VotifierError::InvalidPayload(
@@ -47,14 +87,37 @@ pub fn parse_v2_packet(
 
     let json_str = &raw_text[json_start..=json_end];
 
-    let outer: V2OuterMessage = serde_json::from_str(json_str)
+    let parsed_json: serde_json::Value = serde_json::from_str(json_str)
         .map_err(|e| VotifierError::InvalidPayload(format!("Failed to parse outer JSON: {e}")))?;
 
+    let target_obj = if let Some(arr) = parsed_json.as_array() {
+        arr.first()
+            .ok_or_else(|| VotifierError::InvalidPayload("Empty JSON array in outer payload".to_string()))?
+    } else {
+        &parsed_json
+    };
+
+    let payload_str = match target_obj.get("payload") {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(val @ serde_json::Value::Object(_)) => serde_json::to_string(val)
+            .map_err(|e| VotifierError::InvalidPayload(format!("Failed to serialize inner payload: {e}")))?,
+        _ => {
+            return Err(VotifierError::InvalidPayload(
+                "Missing or invalid payload in outer JSON".to_string(),
+            ));
+        }
+    };
+
+    let signature_raw = target_obj
+        .get("signature")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| VotifierError::InvalidPayload("Missing signature in outer JSON".to_string()))?;
+
     let provided_sig = BASE64_STANDARD
-        .decode(outer.signature.trim())
+        .decode(signature_raw.trim())
         .map_err(|e| VotifierError::InvalidPayload(format!("Signature is not valid Base64: {e}")))?;
 
-    let inner: V2InnerPayload = serde_json::from_str(&outer.payload)
+    let inner: V2InnerPayload = serde_json::from_str(&payload_str)
         .map_err(|e| VotifierError::InvalidPayload(format!("Failed to parse inner JSON: {e}")))?;
 
     if inner.service_name.trim().is_empty() {
@@ -79,7 +142,7 @@ pub fn parse_v2_packet(
 
     let signature_valid = verify_hmac_signature(
         &provided_sig,
-        outer.payload.as_bytes(),
+        payload_str.as_bytes(),
         token.as_bytes(),
     )?;
 

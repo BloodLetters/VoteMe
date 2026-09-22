@@ -14,11 +14,11 @@ pub fn parse_v1_packet(
 
 pub fn parse_v1_decrypted_payload(payload: &[u8]) -> VotifierResult<VoteRequest> {
     let text = String::from_utf8_lossy(payload);
-    let mut lines = text.split('\n');
+    let raw_lines: Vec<&str> = text.split('\n').map(str::trim).collect();
 
-    let opcode = lines
-        .next()
-        .map(str::trim)
+    let opcode = raw_lines
+        .first()
+        .copied()
         .ok_or_else(|| VotifierError::InvalidPayload("Missing opcode in V1 block".to_string()))?;
 
     if opcode != V1_OPCODE_VOTE {
@@ -27,20 +27,37 @@ pub fn parse_v1_decrypted_payload(payload: &[u8]) -> VotifierResult<VoteRequest>
         )));
     }
 
-    let service_name = lines
-        .next()
+    let non_empty: Vec<&str> = text
+        .lines()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| VotifierError::InvalidPayload("Missing serviceName in V1 block".to_string()))?;
+        .collect();
 
-    let username = lines
-        .next()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| VotifierError::InvalidPayload("Missing username in V1 block".to_string()))?;
-
-    let address = lines.next().map(str::trim).unwrap_or("");
-    let timestamp = lines.next().map(str::trim).unwrap_or("");
+    let (service_name, username, address, timestamp) = if non_empty.len() >= 5 {
+        (non_empty[1], non_empty[2], non_empty[3], non_empty[4])
+    } else if raw_lines.len() >= 3 && !raw_lines[2].is_empty() {
+        let service = if raw_lines[1].is_empty() {
+            "Votifier"
+        } else {
+            raw_lines[1]
+        };
+        let user = raw_lines[2];
+        let addr = raw_lines.get(3).copied().unwrap_or("");
+        let ts = raw_lines.get(4).copied().unwrap_or("");
+        (service, user, addr, ts)
+    } else {
+        match non_empty.len() {
+            0 | 1 => {
+                return Err(VotifierError::InvalidPayload(
+                    "Missing username in V1 block".to_string(),
+                ));
+            }
+            2 => ("Votifier", non_empty[1], "", ""),
+            3 => ("Votifier", non_empty[1], non_empty[2], ""),
+            4 => ("Votifier", non_empty[1], non_empty[2], non_empty[3]),
+            _ => (non_empty[1], non_empty[2], non_empty[3], non_empty[4]),
+        }
+    };
 
     Ok(VoteRequest {
         service_name: service_name.to_string(),

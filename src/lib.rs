@@ -21,12 +21,12 @@ use crate::dispatcher::VoteDispatcher;
 use crate::model::VoteStatistics;
 use crate::network::{VoteReceiver, VoteThrottleService};
 
-pub struct VotifierPlugin {
+pub struct VoteMe {
     receiver: Mutex<Option<VoteReceiver>>,
     stats: Arc<VoteStatistics>,
 }
 
-impl Plugin for VotifierPlugin {
+impl Plugin for VoteMe {
     fn new() -> Self {
         Self {
             receiver: Mutex::new(None),
@@ -136,7 +136,7 @@ impl Plugin for VotifierPlugin {
     }
 }
 
-register_plugin!(VotifierPlugin);
+register_plugin!(VoteMe);
 
 #[cfg(test)]
 mod tests;

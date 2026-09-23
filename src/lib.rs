@@ -3,6 +3,7 @@ pub mod config;
 pub mod crypto;
 pub mod dispatcher;
 pub mod error;
+pub mod ipc;
 pub mod model;
 pub mod network;
 pub mod protocol;
@@ -18,12 +19,14 @@ use crate::commands::{VotePlayerCommandHandler, VotifierAdminCommandHandler};
 use crate::config::load_or_create_config;
 use crate::crypto::RsaKeyManager;
 use crate::dispatcher::VoteDispatcher;
+use crate::ipc::VoteIpcService;
 use crate::model::VoteStatistics;
 use crate::network::{ConnectionContext, VoteReceiver, VoteThrottleService};
 
 pub struct VoteMe {
     receiver: Mutex<Option<VoteReceiver>>,
     stats: Arc<VoteStatistics>,
+    ipc_service: Arc<VoteIpcService>,
 }
 
 impl Plugin for VoteMe {
@@ -31,6 +34,7 @@ impl Plugin for VoteMe {
         Self {
             receiver: Mutex::new(None),
             stats: Arc::new(VoteStatistics::new()),
+            ipc_service: Arc::new(VoteIpcService::new()),
         }
     }
 
@@ -75,10 +79,12 @@ impl Plugin for VoteMe {
 
         let server_instance = context.get_server();
         let vote_dispatcher = Arc::clone(&dispatcher);
+        let ipc_dispatcher = Arc::clone(&self.ipc_service);
 
         let vote_callback = Arc::new(move |vote| {
             let result = vote_dispatcher.process_incoming_vote(&vote);
             if result.accepted {
+                ipc_dispatcher.dispatch_vote_event(&vote);
                 if let Some(broadcast_message) = result.broadcast_message {
                     server_instance.broadcast(&broadcast_message);
                 }
@@ -135,6 +141,14 @@ impl Plugin for VoteMe {
             receiver.shutdown();
         }
         Ok(())
+    }
+
+    fn handle_ipc_message(
+        &self,
+        sender: String,
+        message: Vec<u8>,
+    ) -> Result<Vec<u8>, String> {
+        self.ipc_service.handle_incoming_message(&sender, &message)
     }
 }
 

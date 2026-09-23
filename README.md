@@ -13,16 +13,9 @@ NuVotifier/Votifier porting for Pumpkin Server
 
 ## Roadmap
 Planned features and future enhancements:
-- [ ] **Inter-Plugin Communication (IPC)**
-  - Dispatch vote events to other Pumpkin plugins via the native IPC interface (`pumpkin:plugin/ipc`).
-  - Enable external plugins (economy, custom crates, quest engines) to consume structured vote payloads without relying on console command strings.
-
+- [x] **Inter-Plugin Communication (IPC)**
 - [ ] **Offline Vote Queuing and Persistence**
-  - Store pending votes for offline players using local data persistence.
-  - Automatically process and deliver rewards when the player connects to the server.
-
 - [ ] **Network Vote Forwarding**
-  - Forward received votes to downstream backend servers in a proxy network setup (BungeeCord / Velocity).
 
 ## Installation
 1. Compile the plugin using `cargo build --release` or obtain the precompiled `voteme.wasm`.
@@ -103,7 +96,8 @@ If a voting site only supports V1:
 - **Port**: Port configured in `config.json` (default: `8192`)
 - **Public Key**: Copy the complete content of `plugins/data/voteme/rsa/public.pem`
 
-
+## Developer Guide
+For the full developer integration guide, JSON schemas, and rust listener example, see [docs/Listener.md](docs/Listener.md).
 
 ## Commands and In-Game Permissions
 
